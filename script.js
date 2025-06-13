@@ -6,8 +6,12 @@ const PaC = "Past Continuous"
 const PrS = "Present Simple"
 const PrCn = "Present Continuous"
 const PrPerCn = "Present Perfect Continuous"
-const questions = [
-  {
+//const questions = [
+
+  
+//];
+let questions = [
+    {
     question: "while ...",
     options: [PaPr, PaC, PaS, PrCn, PrPerCn],
     correct: [1]
@@ -132,138 +136,152 @@ const questions = [
     options: [PrS, FuS, PaC, PrCn],
     correct: [0, 1]
   },
-  
-];
+]; // Загрузка внешнего массива вопросов здесь
 
 let current = 0;
-let selectedAnswers = [];
+let selectedAnswers = new Array(questions.length).fill(null).map(() => []);
+let answeredQuestions = new Set();
 let correctCount = 0;
+let isAutoAdvancing = false;
 
+const quizEl = document.getElementById("quiz");
 const questionEl = document.getElementById("question");
 const optionsEl = document.getElementById("options");
-const chooseMsgEl = document.getElementById("chooseMsg");
-const resultEl = document.getElementById("result");
-const quizEl = document.getElementById("quiz");
-const scoreText = document.getElementById("scoreText");
 const progressText = document.getElementById("progressText");
-
-const correctSound = new Audio("correct.mp3");
-const wrongSound = new Audio("wrong.mp3");
+const chooseMsg = document.getElementById("chooseMsg");
+const resultEl = document.getElementById("result");
+const scoreText = document.getElementById("scoreText");
+const showResultsBtn = document.getElementById("showResultsBtn");
+const restartBtn = document.getElementById("restartBtn");
+const prevBtn = document.getElementById("prevBtn");
+const nextBtn = document.getElementById("nextBtn");
 
 function showQuestion(index) {
   const q = questions[index];
   questionEl.textContent = q.question;
-  optionsEl.innerHTML = "";
-  chooseMsgEl.textContent = q.correct.length > 1
-    ? `Выберите ${q.correct.length} ответа`
-    : "";
+  progressText.textContent = `Вопрос ${index + 1} / ${questions.length}`;
+  chooseMsg.textContent = q.correct.length > 1 ? `Выберите ${q.correct.length} ответов` : "";
 
+  optionsEl.innerHTML = "";
   q.options.forEach((opt, i) => {
     const btn = document.createElement("div");
     btn.className = "option";
     btn.textContent = opt;
-    btn.onclick = () => toggleAnswer(btn, i);
+    btn.dataset.index = i;
+
+    if (answeredQuestions.has(index)) {
+      if (q.correct.includes(i)) {
+        btn.classList.add("correct");
+      } else if (selectedAnswers[index].includes(i)) {
+        btn.classList.add("wrong");
+      }
+      btn.style.pointerEvents = "none";
+    } else if (selectedAnswers[index].includes(i)) {
+      btn.classList.add("selected");
+    }
+
+    btn.addEventListener("click", () => toggleAnswer(i));
     optionsEl.appendChild(btn);
   });
 
-  if (selectedAnswers[index]) {
-    selectedAnswers[index].forEach(i => {
-      optionsEl.children[i].classList.add("selected");
-    });
+  // Растягиваем последнюю кнопку, если нечётное кол-во
+  if (q.options.length % 2 !== 0) {
+    optionsEl.lastElementChild.classList.add("wide-option");
   }
 
-  progressText.textContent = `${index + 1} / ${questions.length}`;
-  updateNavButtons();
+  // Управление видимостью и расположением кнопок "Назад" и "Вперёд"
+  if (index === 0) {
+    prevBtn.style.visibility = "hidden";
+    nextBtn.style.order = "1";
+  } else {
+    prevBtn.style.visibility = "visible";
+    nextBtn.style.order = "0";
+  }
+
+  // Обновляем кнопки, блокируем если автопереход
+  prevBtn.disabled = isAutoAdvancing;
+  nextBtn.disabled = isAutoAdvancing;
+
+  current = index;
 }
 
-function toggleAnswer(el, index) {
+function toggleAnswer(i) {
+  if (isAutoAdvancing) return;
+
   const q = questions[current];
-  selectedAnswers[current] = selectedAnswers[current] || [];
   const sel = selectedAnswers[current];
+  const maxSelect = q.correct.length;
 
-  if (optionsEl.classList.contains("locked")) return;
+  if (answeredQuestions.has(current)) return;
 
-  if (sel.includes(index)) {
-    sel.splice(sel.indexOf(index), 1);
-    el.classList.remove("selected");
-    return;
+  const indexInSel = sel.indexOf(i);
+  if (indexInSel > -1) {
+    sel.splice(indexInSel, 1);
+  } else {
+    if (sel.length < maxSelect) sel.push(i);
   }
 
-  if (sel.length >= q.correct.length) return;
+  showQuestion(current);
 
-  sel.push(index);
-  el.classList.add("selected");
+  if (sel.length === maxSelect) {
+    // Подсветка и проверка
+    const correctSet = new Set(q.correct);
+    const isCorrect = sel.length === q.correct.length && sel.every(a => correctSet.has(a));
 
-  if (sel.length === q.correct.length) {
-    optionsEl.classList.add("locked");
-    const options = optionsEl.querySelectorAll(".option");
+    if (isCorrect) {
+      correctCount++;
+      document.getElementById("correctSound").play();
+    } else {
+      document.getElementById("wrongSound").play();
+    }
 
-    sel.forEach((i, idx) => {
-      setTimeout(() => {
-        const opt = options[i];
-        if (q.correct.includes(i)) {
-          opt.classList.remove("selected");
-          opt.classList.add("correct");
-          correctSound.play();
-        } else {
-          opt.classList.remove("selected");
-          opt.classList.add("wrong");
-          wrongSound.play();
-        }
-      }, idx * 500);
-    });
+    answeredQuestions.add(current);
+    showQuestion(current);
 
-    setTimeout(() => {
-      options.forEach((opt, i) => {
-        if (!sel.includes(i) && q.correct.includes(i)) {
-          opt.classList.add("correct");
-        }
-        opt.style.pointerEvents = "none";
-      });
-    }, q.correct.length * 500 + 300);
+    if (navigator.vibrate) navigator.vibrate(200);
 
-    if (arraysEqual(sel.sort(), q.correct.sort())) correctCount++;
+    isAutoAdvancing = true;
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
 
     setTimeout(() => {
-      optionsEl.classList.remove("locked");
-      nextQuestion();
+      isAutoAdvancing = false;
+      prevBtn.disabled = false;
+      nextBtn.disabled = false;
+      if (current < questions.length - 1) {
+        showQuestion(current + 1);
+      } else {
+        quizEl.style.display = "none";
+        resultEl.style.display = "block";
+        scoreText.textContent = `Ваш результат: ${correctCount} / ${questions.length}`;
+      }
     }, 4000);
   }
 }
 
-function arraysEqual(a, b) {
-  return a.length === b.length && a.every((val, index) => val === b[index]);
-}
-
 function nextQuestion() {
+  if (isAutoAdvancing) return;
   if (current < questions.length - 1) {
-    current++;
-    showQuestion(current);
-  } else {
-    quizEl.style.display = "none";
-    resultEl.style.display = "block";
-    scoreText.textContent = `Ваш результат: ${correctCount} / ${questions.length}`;
+    showQuestion(current + 1);
   }
 }
 
 function prevQuestion() {
+  if (isAutoAdvancing) return;
   if (current > 0) {
-    current--;
-    showQuestion(current);
+    showQuestion(current - 1);
   }
-}
-
-function updateNavButtons() {
-  document.getElementById("prevBtn").style.visibility = current === 0 ? "hidden" : "visible";
 }
 
 function restartQuiz() {
   current = 0;
+  selectedAnswers = new Array(questions.length).fill(null).map(() => []);
+  answeredQuestions.clear();
   correctCount = 0;
-  selectedAnswers = [];
+  isAutoAdvancing = false;
   quizEl.style.display = "block";
   resultEl.style.display = "none";
-  showQuestion(current);
+  showQuestion(0);
 }
 
 function showFinalTable() {
@@ -273,46 +291,49 @@ function showFinalTable() {
   const popup = document.createElement("div");
   popup.className = "popup-content";
 
-  const title = document.createElement("h3");
-  title.textContent = "Подробные результаты";
-  popup.appendChild(title);
-
   const table = document.createElement("table");
   const header = document.createElement("tr");
-  ["#", "Вопрос", "Ваш ответ", "Правильный ответ"].forEach(h => {
+  ["#", "Вопрос", "Ваш ответ", "Правильный ответ"].forEach(text => {
     const th = document.createElement("th");
-    th.textContent = h;
+    th.textContent = text;
     header.appendChild(th);
   });
   table.appendChild(header);
 
-  questions.forEach((q, idx) => {
-    const tr = document.createElement("tr");
-    const userAns = selectedAnswers[idx] || [];
+  questions.forEach((q, i) => {
+    const row = document.createElement("tr");
 
-    const td1 = document.createElement("td");
-    td1.textContent = idx + 1;
-    const td2 = document.createElement("td");
-    td2.textContent = q.question;
-    const td3 = document.createElement("td");
-    td3.textContent = userAns.map(i => q.options[i]).join(", ");
-    const td4 = document.createElement("td");
-    td4.textContent = q.correct.map(i => q.options[i]).join(", ");
+    const num = document.createElement("td");
+    num.textContent = i + 1;
 
-    [td1, td2, td3, td4].forEach(td => tr.appendChild(td));
-    table.appendChild(tr);
+    const ques = document.createElement("td");
+    ques.textContent = q.question;
+
+    const userAns = document.createElement("td");
+    userAns.textContent = selectedAnswers[i].map(idx => q.options[idx]).join(", ");
+
+    const correctAns = document.createElement("td");
+    correctAns.textContent = q.correct.map(idx => q.options[idx]).join(", ");
+
+    [num, ques, userAns, correctAns].forEach(td => row.appendChild(td));
+    table.appendChild(row);
   });
-
-  popup.appendChild(table);
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "popup-close-btn";
   closeBtn.textContent = "Закрыть";
   closeBtn.onclick = () => document.body.removeChild(overlay);
-  popup.appendChild(closeBtn);
 
+  popup.appendChild(table);
+  popup.appendChild(closeBtn);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
 }
 
-window.onload = () => showQuestion(current);
+window.addEventListener("DOMContentLoaded", () => {
+  showQuestion(0);
+  nextBtn.addEventListener("click", nextQuestion);
+  prevBtn.addEventListener("click", prevQuestion);
+  restartBtn.addEventListener("click", restartQuiz);
+  showResultsBtn.addEventListener("click", showFinalTable);
+});
