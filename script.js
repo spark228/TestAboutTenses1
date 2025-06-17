@@ -255,7 +255,7 @@ function toggleAnswer(i) {
         resultEl.style.display = "block";
         scoreText.textContent = `Ваш результат: ${correctCount} / ${questions.length}`;
       }
-    }, 4000);
+    }, 3000);
   }
 }
 
